@@ -1,5 +1,6 @@
 import argparse
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 COMMON_SERVICES = {
@@ -40,9 +41,7 @@ def scan_port(target, port, timeout):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
             sock.settimeout(timeout)
 
-            result = sock.connect_ex((target, port))
-
-            if result == 0:
+            if sock.connect_ex((target, port)) == 0:
                 return {
                     "port": port,
                     "protocol": "tcp",
@@ -51,7 +50,6 @@ def scan_port(target, port, timeout):
                 }
 
     except socket.gaierror:
-        print(f"[ERROR] Could not resolve target: {target}")
         return None
 
     except OSError:
@@ -102,6 +100,14 @@ def main():
         help="Connection timeout in seconds. Default: 0.8"
     )
 
+    parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=25,
+        help="Concurrent worker count. Default: 25"
+    )
+
     args = parser.parse_args()
 
     try:
@@ -110,21 +116,39 @@ def main():
     except ValueError as error:
         parser.error(str(error))
 
+    if args.workers < 1:
+        parser.error("Worker count must be at least 1.")
+
     print(f"\nScanning authorized target: {args.target}")
-    print(f"Port range: {args.ports}\n")
+    print(f"Port range: {args.ports}")
+    print(f"Concurrent workers: {args.workers}\n")
 
     open_ports = []
 
-    for port in ports:
-        result = scan_port(args.target, port, args.timeout)
-
-        if result is not None:
-            open_ports.append(result)
-
-            print(
-                f"[OPEN] {result['port']}/tcp "
-                f"| Service: {result['service']}"
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = [
+            executor.submit(
+                scan_port,
+                args.target,
+                port,
+                args.timeout,
             )
+            for port in ports
+        ]
+
+        for future in as_completed(futures):
+            result = future.result()
+
+            if result is not None:
+                open_ports.append(result)
+
+    open_ports.sort(key=lambda item: item["port"])
+
+    for result in open_ports:
+        print(
+            f"[OPEN] {result['port']}/tcp "
+            f"| Service: {result['service']}"
+        )
 
     print(f"\nScan complete. Open ports found: {len(open_ports)}")
 
