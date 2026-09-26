@@ -1,6 +1,9 @@
 import argparse
+import json
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 
 
 COMMON_SERVICES = {
@@ -75,6 +78,26 @@ def parse_port_range(port_range):
     return range(start, end + 1)
 
 
+def save_report(target, port_range, workers, open_ports, output_file):
+    report = {
+        "target": target,
+        "scan_type": "tcp_connect_scan",
+        "port_range": port_range,
+        "worker_count": workers,
+        "completed_at": datetime.now().isoformat(timespec="seconds"),
+        "open_port_count": len(open_ports),
+        "open_ports": open_ports,
+    }
+
+    output_path = Path(output_file)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", encoding="utf-8") as report_file:
+        json.dump(report, report_file, indent=2)
+
+    return output_path
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Authorized TCP port scanner"
@@ -106,6 +129,13 @@ def main():
         type=int,
         default=25,
         help="Concurrent worker count. Default: 25"
+    )
+
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="results/scan.json",
+        help="JSON report output path. Default: results/scan.json"
     )
 
     args = parser.parse_args()
@@ -150,7 +180,16 @@ def main():
             f"| Service: {result['service']}"
         )
 
+    report_path = save_report(
+        args.target,
+        args.ports,
+        args.workers,
+        open_ports,
+        args.output,
+    )
+
     print(f"\nScan complete. Open ports found: {len(open_ports)}")
+    print(f"JSON report saved to: {report_path}")
 
 
 if __name__ == "__main__":
