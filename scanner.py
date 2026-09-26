@@ -2,6 +2,39 @@ import argparse
 import socket
 
 
+COMMON_SERVICES = {
+    20: "ftp-data",
+    21: "ftp",
+    22: "ssh",
+    23: "telnet",
+    25: "smtp",
+    53: "dns",
+    80: "http",
+    110: "pop3",
+    135: "msrpc",
+    139: "netbios-ssn",
+    143: "imap",
+    389: "ldap",
+    443: "https",
+    445: "microsoft-ds",
+    3306: "mysql",
+    3389: "rdp",
+    5432: "postgresql",
+    5900: "vnc",
+    6379: "redis",
+    8000: "http-alt",
+    8080: "http-alt",
+}
+
+
+def identify_service(port):
+    try:
+        return socket.getservbyport(port, "tcp")
+
+    except OSError:
+        return COMMON_SERVICES.get(port, "unknown")
+
+
 def scan_port(target, port, timeout):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -10,7 +43,12 @@ def scan_port(target, port, timeout):
             result = sock.connect_ex((target, port))
 
             if result == 0:
-                return port
+                return {
+                    "port": port,
+                    "protocol": "tcp",
+                    "state": "open",
+                    "service": identify_service(port),
+                }
 
     except socket.gaierror:
         print(f"[ERROR] Could not resolve target: {target}")
@@ -82,7 +120,11 @@ def main():
 
         if result is not None:
             open_ports.append(result)
-            print(f"[OPEN] {result}/tcp")
+
+            print(
+                f"[OPEN] {result['port']}/tcp "
+                f"| Service: {result['service']}"
+            )
 
     print(f"\nScan complete. Open ports found: {len(open_ports)}")
 
