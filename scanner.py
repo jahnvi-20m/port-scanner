@@ -10,15 +10,33 @@ def scan_port(target, port, timeout):
             result = sock.connect_ex((target, port))
 
             if result == 0:
-                print(f"[OPEN] Port {port}/tcp")
-            else:
-                print(f"[CLOSED OR FILTERED] Port {port}/tcp")
+                return port
 
     except socket.gaierror:
         print(f"[ERROR] Could not resolve target: {target}")
+        return None
 
-    except OSError as error:
-        print(f"[ERROR] Scan failed: {error}")
+    except OSError:
+        return None
+
+    return None
+
+
+def parse_port_range(port_range):
+    try:
+        start, end = map(int, port_range.split("-"))
+
+    except ValueError:
+        raise ValueError(
+            "Port range must use START-END format, for example: 1-1024"
+        )
+
+    if not 1 <= start <= end <= 65535:
+        raise ValueError(
+            "Port numbers must be between 1 and 65535."
+        )
+
+    return range(start, end + 1)
 
 
 def main():
@@ -32,25 +50,41 @@ def main():
     )
 
     parser.add_argument(
-        "port",
-        type=int,
-        help="TCP port number to scan"
+        "-p",
+        "--ports",
+        default="1-1024",
+        help="Port range in START-END format. Default: 1-1024"
     )
 
     parser.add_argument(
         "-t",
         "--timeout",
         type=float,
-        default=1.0,
-        help="Connection timeout in seconds. Default: 1.0"
+        default=0.8,
+        help="Connection timeout in seconds. Default: 0.8"
     )
 
     args = parser.parse_args()
 
-    if not 1 <= args.port <= 65535:
-        parser.error("Port must be between 1 and 65535.")
+    try:
+        ports = parse_port_range(args.ports)
 
-    scan_port(args.target, args.port, args.timeout)
+    except ValueError as error:
+        parser.error(str(error))
+
+    print(f"\nScanning authorized target: {args.target}")
+    print(f"Port range: {args.ports}\n")
+
+    open_ports = []
+
+    for port in ports:
+        result = scan_port(args.target, port, args.timeout)
+
+        if result is not None:
+            open_ports.append(result)
+            print(f"[OPEN] {result}/tcp")
+
+    print(f"\nScan complete. Open ports found: {len(open_ports)}")
 
 
 if __name__ == "__main__":
